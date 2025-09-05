@@ -1,0 +1,306 @@
+<script>
+  // Wheel data
+  const wheelNumbers = [
+    '0', '28', '9', '26', '30', '11', '7', '20', '32', '17', 
+    '5', '22', '34', '15', '3', '24', '36', '13', '1', '00', 
+    '27', '10', '25', '29', '12', '8', '19', '31', '18', '6', 
+    '21', '33', '16', '4', '23', '35', '14', '2'
+  ];
+  const redNumbers = new Set(['1','3','5','7','9','12','14','16','18','19','21','23','25','27','30','32','34','36']);
+
+  // Canvas setup
+  const canvas = document.getElementById('roulette');
+  const ctx = canvas.getContext('2d');
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const outerRadius = 230;
+  const innerRadius = 180;
+
+  // UI Elements
+  const spinButton = document.getElementById('spinButton');
+  const resultEl = document.getElementById('result');
+  const bankrollEl = document.getElementById('bankroll');
+  const betForm = document.getElementById('betForm');
+  const betTypeEl = document.getElementById('betType');
+  const betValueEl = document.getElementById('betValue');
+  const betAmountEl = document.getElementById('betAmount');
+  const messageEl = document.getElementById('message');
+  const placeBetBtn = document.getElementById('placeBetBtn');
+  const historyContent = document.getElementById('historyContent');
+
+  // Game state
+  let bankroll = 1000;
+  let bets = [];
+  let spinning = false;
+  let wheelRotation = 0;
+  let ballAngle = 0;
+  let wheelSpeed = 0;
+  let ballSpeed = 0;
+  const spinHistory = [];
+
+  updateBankroll();
+  drawWheel();
+
+  // Event listeners
+  betForm.addEventListener('submit', e => {
+    e.preventDefault();
+    if (spinning) return;
+
+    const betType = betTypeEl.value.trim();
+    const betValueRaw = betValueEl.value.trim().toLowerCase();
+    const betAmount = parseInt(betAmountEl.value);
+
+    if (isNaN(betAmount) || betAmount <= 0) {
+      showMessage("Please enter a valid bet amount.");
+      return;
+    }
+    if (betAmount > bankroll) {
+      showMessage("You can't bet more than your bankroll!");
+      return;
+    }
+
+    const betValue = betValueRaw;
+    if (!validateBetValue(betType, betValue)) {
+      showMessage(`Invalid bet value for ${betType}.`);
+      return;
+    }
+
+    bets.push({ type: betType, value: betValue, amount: betAmount });
+    bankroll -= betAmount;
+    updateBankroll();
+    showMessage(`Bet placed: $${betAmount} on ${betType} = ${betValue}. You can place more bets or spin.`);
+    spinButton.disabled = false;
+
+    betValueEl.value = '';
+    betAmountEl.value = 10;
+  });
+
+  spinButton.addEventListener('click', () => {
+    if (spinning || bets.length === 0) {
+      showMessage("Place at least one bet before spinning.");
+      return;
+    }
+
+    spinning = true;
+    spinButton.disabled = true;
+    placeBetBtn.disabled = true;
+    messageEl.textContent = '';
+
+    // Set random initial speeds
+    wheelSpeed = (Math.random() * 0.03 + 0.05);
+    ballSpeed = -(Math.random() * 0.15 + 0.25); // Opposite direction
+
+    requestAnimationFrame(animateSpin);
+  });
+
+  function animateSpin() {
+    wheelRotation += wheelSpeed;
+    ballAngle += ballSpeed;
+
+    // Apply friction
+    wheelSpeed *= 0.992;
+    ballSpeed *= 0.985;
+
+    drawWheel();
+
+    if (Math.abs(ballSpeed) < 0.002 && Math.abs(wheelSpeed) < 0.002) {
+      finishSpin();
+    } else {
+      requestAnimationFrame(animateSpin);
+    }
+  }
+
+  function drawWheel() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const segmentAngle = (2 * Math.PI) / wheelNumbers.length;
+
+    for (let i = 0; i < wheelNumbers.length; i++) {
+      const angleStart = wheelRotation + i * segmentAngle;
+      const angleEnd = angleStart + segmentAngle;
+
+      let fillColor = '#006600';
+      if (wheelNumbers[i] === '0' || wheelNumbers[i] === '00') {
+        fillColor = '#006600';
+      } else if (redNumbers.has(wheelNumbers[i])) {
+        fillColor = '#b22222';
+      } else {
+        fillColor = '#222222';
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, outerRadius, angleStart, angleEnd, false);
+      ctx.lineTo(centerX, centerY);
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+      ctx.strokeStyle = '#004400';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, innerRadius, angleStart, angleEnd, false);
+      ctx.lineTo(centerX, centerY);
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#eee';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const textRadius = (outerRadius + innerRadius) / 2;
+    const segmentAngleHalf = segmentAngle / 2;
+
+    for (let i = 0; i < wheelNumbers.length; i++) {
+      const angle = wheelRotation + (i + 0.5) * segmentAngle;
+      const x = centerX + textRadius * Math.cos(angle);
+      const y = centerY + textRadius * Math.sin(angle);
+      ctx.fillText(wheelNumbers[i], x, y);
+    }
+
+    // Draw ball
+    const ballRadius = innerRadius - 10;
+    const ballX = centerX + ballRadius * Math.cos(ballAngle);
+    const ballY = centerY + ballRadius * Math.sin(ballAngle);
+
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, 10, 0, 2 * Math.PI);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  function finishSpin() {
+    spinning = false;
+    placeBetBtn.disabled = false;
+
+    const relativeAngle = ((ballAngle - wheelRotation) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    const segmentAngle = (2 * Math.PI) / wheelNumbers.length;
+    let index = Math.floor(relativeAngle / segmentAngle);
+    const winningNumber = wheelNumbers[index];
+
+    let totalWin = 0;
+    const betResults = [];
+
+    for (const bet of bets) {
+      const win = checkBetWin(bet, winningNumber);
+      if (win) {
+        const payout = bet.amount * payoutMultiplier(bet);
+        totalWin += payout + bet.amount;
+        betResults.push({ ...bet, won: true, payout });
+      } else {
+        betResults.push({ ...bet, won: false, payout: 0 });
+      }
+    }
+
+    bankroll += totalWin;
+    updateBankroll();
+
+    resultEl.textContent = totalWin > 0
+      ? `Winning Number: ${winningNumber} 🎉 You won $${totalWin}!`
+      : `Winning Number: ${winningNumber} 😞 You lost all bets.`;
+    resultEl.style.color = totalWin > 0 ? '#0f0' : '#f44';
+
+    spinHistory.unshift({ winningNumber, bets: betResults });
+    updateHistory();
+
+    bets = [];
+    spinButton.disabled = true;
+  }
+
+  function validateBetValue(type, val) {
+    if (type === 'number') {
+      if (val === '0' || val === '00') return true;
+      const n = parseInt(val);
+      return n >= 1 && n <= 36;
+    } else if (type === 'color') {
+      return val === 'red' || val === 'black';
+    } else if (type === 'oddEven') {
+      return val === 'odd' || val === 'even';
+    } else if (type === 'dozen') {
+      return val === '1-12' || val === '13-24' || val === '25-36';
+    }
+    return false;
+  }
+
+  function payoutMultiplier(bet) {
+    switch (bet.type) {
+      case 'number': return 35;
+      case 'color': return 1;
+      case 'oddEven': return 1;
+      case 'dozen': return 2;
+      default: return 0;
+    }
+  }
+
+  function isRed(num) {
+    return redNumbers.has(num);
+  }
+
+  function isOdd(num) {
+    return num % 2 === 1;
+  }
+
+  function checkBetWin(bet, winningNumber) {
+    const wNum = winningNumber === '00' ? -1 : (winningNumber === '0' ? 0 : parseInt(winningNumber));
+
+    switch (bet.type) {
+      case 'number': return bet.value === winningNumber;
+      case 'color':
+        if (wNum <= 0) return false;
+        return (bet.value === 'red' && isRed(winningNumber)) ||
+               (bet.value === 'black' && !isRed(winningNumber));
+      case 'oddEven':
+        if (wNum <= 0) return false;
+        return (bet.value === 'odd' && isOdd(wNum)) ||
+               (bet.value === 'even' && !isOdd(wNum));
+      case 'dozen':
+        if (wNum <= 0) return false;
+        if (bet.value === '1-12') return wNum >= 1 && wNum <= 12;
+        if (bet.value === '13-24') return wNum >= 13 && wNum <= 24;
+        if (bet.value === '25-36') return wNum >= 25 && wNum <= 36;
+        break;
+    }
+    return false;
+  }
+
+  function updateBankroll() {
+    bankrollEl.textContent = `Bankroll: $${bankroll}`;
+  }
+
+  function showMessage(msg) {
+    messageEl.textContent = msg;
+  }
+
+  function updateHistory() {
+    historyContent.innerHTML = '';
+    if (spinHistory.length === 0) {
+      historyContent.textContent = "No spins yet.";
+      return;
+    }
+
+    for (const spin of spinHistory) {
+      const spinDiv = document.createElement('div');
+      spinDiv.className = 'history-spin';
+
+      const header = document.createElement('div');
+      header.className = 'history-spin-header';
+      header.textContent = `Winning Number: ${spin.winningNumber}`;
+      spinDiv.appendChild(header);
+
+      for (const bet of spin.bets) {
+        const betEntry = document.createElement('div');
+        betEntry.className = 'bet-entry';
+        betEntry.textContent = `Bet: $${bet.amount} on ${bet.type} = ${bet.value} → `;
+        betEntry.textContent += bet.won ? `Won $${bet.payout}` : 'Lost';
+        betEntry.classList.add(bet.won ? 'bet-win' : 'bet-loss');
+        spinDiv.appendChild(betEntry);
+      }
+
+      historyContent.appendChild(spinDiv);
+    }
+  }
+</script>
